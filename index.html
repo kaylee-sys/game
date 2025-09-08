@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Халявщики Game</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #71c5cf;
+      margin: 0;
+      font-family: sans-serif;
+    }
+
+    #game-container {
+      text-align: center;
+      display: flex;
+      flex-direction: column; /* Размещаем канву и ползунок вертикально */
+      align-items: center;
+    }
+
+    #gameCanvas {
+      background-color: #4ec0ca;
+      display: none;
+      border: 2px solid black;
+      margin-bottom: 10px;
+    }
+
+    #slider {
+      width: 300px; /* Ширина ползунка */
+      margin-top: 10px;
+    }
+
+    /* Стили для меню */
+    #menu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #menu button {
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+
+    #game-over {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #game-over p {
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="menu">
+      <h1>Халявщики Game</h1>
+      <button id="play-button">Играть</button>
+    </div>
+
+    <canvas id="gameCanvas" width="400" height="480"></canvas>
+    <input type="range" id="slider" min="0" max="100" value="50">
+
+    <div id="game-over">
+      <p>Game Over! Ваш счет: <span id="final-score">0</span></p>
+      <button id="menu-button">В главное меню</button>
+    </div>
+
+    <!-- Добавляем аудио элементы -->
+    <audio id="menuMusic" src="menu_music.mp3" loop muted></audio>
+    <audio id="gameMusic" src="game_music.mp3" loop></audio>
+  </div>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const slider = document.getElementById('slider');
+    const gameContainer = document.getElementById('game-container');
+    const menu = document.getElementById('menu');
+    const playButton = document.getElementById('play-button');
+    const gameOverScreen = document.getElementById('game-over');
+    const finalScore = document.getElementById('final-score');
+    const menuButton = document.getElementById('menu-button');
+
+    // Получаем доступ к аудио элементам
+    const menuMusic = document.getElementById('menuMusic');
+    const gameMusic = document.getElementById('gameMusic');
+
+    menuMusic.volume = 0.5; // Устанавливаем громкость музыки в меню на 50% (0.5)
+
+    // Настройки игры
+    let bird;
+    let pipes;
+    let score;
+    let gameOver;
+    let frameCount;
+    let pipeWidth;
+    let pipeSpeed;
+    let pipeGap;
+    let gameSpeedIncreaseInterval;
+
+    // Добавляем переменную для хранения изображения птицы
+    let birdImage = new Image();
+    birdImage.src = 'bird.png'; // Укажи путь к твоему изображению
+
+    // После загрузки изображения, запускаем инициализацию игры (чтобы убедиться, что изображение загружено)
+    birdImage.onload = () => {
+        initGame(); // УБИРАЕМ КОММЕНТАРИЙ!
+    };
+
+    function initGame() {
+      bird = {
+        x: 50,
+        y: canvas.height / 2,
+        width: 34 * 1.5 * 1.35, // Увеличиваем ширину на 50%, а затем еще на 35%
+        height: 24 * 1.5 * 1.35, // Увеличиваем высоту на 50%, а затем еще на 35%
+        draw: function() {
+          ctx.drawImage(birdImage, this.x - this.width / 2, this.y - this.height / 2, this.width, this.height); // Рисуем изображение
+        }
+      };
+
+      pipes = [];
+      score = 0;
+      gameOver = false;
+      frameCount = 0;
+      pipeWidth = 50;
+      pipeSpeed = 2;
+      pipeGap = 150;
+      gameSpeedIncreaseInterval = null;
+    }
+
+    function createPipe() {
+      const minHeight = 50;
+      const maxHeight = canvas.height - pipeGap - minHeight;
+      const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+      const bottomHeight = canvas.height - topHeight - pipeGap;
+
+      pipes.push({
+        x: canvas.width,
+        topHeight: topHeight,
+        bottomHeight: bottomHeight,
+        draw: function() {
+          ctx.fillStyle = 'green';
+          ctx.fillRect(this.x, 0, pipeWidth, this.topHeight);
+          ctx.fillRect(this.x, canvas.height - this.bottomHeight, pipeWidth, this.bottomHeight);
+        },
+        update: function() {
+          this.x -= pipeSpeed;
+        }
+      });
+    }
+
+    function checkCollision(pipe) {
+      if (bird.x + bird.width/2 > pipe.x && bird.x - bird.width/2 < pipe.x + pipeWidth) {
+        if (bird.y - bird.height/2 < pipe.topHeight || bird.y + bird.height/2 > canvas.height - pipe.bottomHeight) {
+          return true;
+        }
+      }
+
+      if (bird.y - bird.height/2 < 0 || bird.y + bird.height/2 > canvas.height) {
+        return true;
+      }
+
+      return false;
+    }
+
+    function increaseSpeed() {
+      pipeSpeed += 0.5;
+    }
+
+    function gameLoop() {
+      if (gameOver) {
+        canvas.style.display = 'none';
+        gameOverScreen.style.display = 'flex';
+        finalScore.textContent = score;
+        clearInterval(gameSpeedIncreaseInterval);
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Инвертированное управление птицей:
+      bird.y = canvas.height - (slider.value / 100) * canvas.height;
+      bird.draw();
+
+      // Создание труб
+      if (frameCount % 100 === 0) {
+        createPipe();
+      }
+
+      // Обновление и отрисовка труб
+      for (let i = 0; i < pipes.length; i++) {
+        pipes[i].draw();
+        pipes[i].update();
+
+        if (checkCollision(pipes[i])) {
+          gameOver = true;
+        }
+
+        if (pipes[i].x + pipeWidth < bird.x - bird.width/2) {
+          score++;
+          pipes.splice(i, 1);
+          i--;
+        } else if (pipes[i].x + pipeWidth < 0) {
+          pipes.splice(i, 1);
+          i--;
+        }
+      }
+
+      // Отображение счета
+      ctx.fillStyle = 'black';
+      ctx.font = '20px Arial';
+      ctx.fillText('Score: ' + score, 10, 25);
+
+      frameCount++;
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Функция для воспроизведения музыки
+    function playMusic(audio) {audio.muted = false; // Включаем звук
+      audio.play();
+    }
+
+    // Функция для остановки музыки
+    function stopMusic(audio) {
+      audio.pause();
+      audio.currentTime = 0; // Сбрасываем время воспроизведения на начало
+    }
+
+    // Добавляем воспроизведение музыки в меню
+    menuButton.addEventListener('click', () => {
+      gameOverScreen.style.display = 'none';
+      menu.style.display = 'flex';
+      stopMusic(gameMusic); // Останавливаем музыку игры
+      playMusic(menuMusic); // Запускаем музыку меню
+    });
+
+    // Немного изменим код playButton.addEventListener
+    playButton.addEventListener('click', () => {
+      menu.style.display = 'none';
+      canvas.style.display = 'block';
+      gameOverScreen.style.display = 'none';
+      stopMusic(menuMusic); // Останавливаем музыку меню
+      playMusic(gameMusic); // Запускаем музыку игры
+      initGame();
+      gameLoop();
+
+      gameSpeedIncreaseInterval = setInterval(() => {
+        if (!gameOver) {
+          increaseSpeed();
+        } else {
+          clearInterval(gameSpeedIncreaseInterval);
+        }
+      }, 10000);
+    });
+
+    // Воспроизводим музыку меню при загрузке страницы
+    playMusic(menuMusic);
+  </script>
+</body>
+</html>
